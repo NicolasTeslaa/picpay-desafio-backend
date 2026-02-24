@@ -11,3 +11,5 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 .idea
+desafio-picpay/data/picpay.mv.db
+desafio-picpay/data/picpay.trace.db
