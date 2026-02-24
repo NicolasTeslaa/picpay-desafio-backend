@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 public record Wallet(
     @Id Long id,
     String fullName,
-    Long cpf,
+    String cpf,
     String email,
     String password,
     Integer type,

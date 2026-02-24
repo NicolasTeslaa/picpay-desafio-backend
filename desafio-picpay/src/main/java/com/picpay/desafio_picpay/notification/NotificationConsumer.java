@@ -18,12 +18,25 @@ public class NotificationConsumer {
 
     @KafkaListener(topics = "transaction-notification", groupId = "picpay-desafio-backend")
     public void receiveNotification(Transaction transaction) {
-        var response = _restClient.get()
-            .retrieve()
-            .toEntity(Notification.class);
+        try {
+            var response = _restClient.post()
+                .body(transaction) // or a DTO with only what the API expects
+                .retrieve()
+                .toEntity(Notification.class);
 
-        if(response.getStatusCode().isError()){
-            throw new NotificationException("Error send notification");
+            if (response.getStatusCode().isError()) {
+                throw new NotificationException("Não foi possível enviar a notificação (HTTP " + response.getStatusCode() + ").");
+            }
+
+            System.out.println(response.getBody());
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
+            // 404 means your configured route is wrong
+            throw new NotificationException("Endpoint de notificação inválido (404). Verifique a URL/config do serviço.");
+        } catch (org.springframework.web.client.RestClientResponseException ex) {
+            // other 4xx/5xx
+            throw new NotificationException("Falha ao enviar notificação (HTTP)");
+        } catch (Exception ex) {
+            throw new NotificationException("Falha inesperada ao enviar notificação.");
         }
     }
 }

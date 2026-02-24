@@ -1,16 +1,12 @@
 package com.picpay.desafio_picpay.authorization;
 
-import com.picpay.desafio_picpay.transaction.Transaction;
-
-import javax.xml.crypto.Data;
-
 public record Authorization(
     String status,
-    Data data)
-{
-    public record Data(boolean authorization){}
+    AuthorizationData data
+) {
+    public record AuthorizationData(boolean authorization) {}
 
     public boolean isAuthorized() {
-        return data.authorization();
+        return data != null && data.authorization();
     }
 }

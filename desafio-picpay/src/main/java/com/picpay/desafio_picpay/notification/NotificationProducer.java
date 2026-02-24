@@ -14,6 +14,5 @@ public class NotificationProducer {
 
     public void send(Transaction transaction) {
         _kafkaTemplate.send("transaction-notification", transaction);
-
     }
 }

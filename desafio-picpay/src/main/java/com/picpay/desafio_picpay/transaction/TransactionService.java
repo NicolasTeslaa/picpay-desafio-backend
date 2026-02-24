@@ -17,7 +17,12 @@ public class TransactionService {
     private final AuthorizerService _authorizerService;
     private final NotificationService _notificationService;
 
-    public TransactionService(TransactionRepository transactionRepository, WalletRepository walletRepository, AuthorizerService authorizerService, NotificationService notificationService) {
+    public TransactionService(
+        TransactionRepository transactionRepository,
+        WalletRepository walletRepository,
+        AuthorizerService authorizerService,
+        NotificationService notificationService
+    ) {
         _transactionRepository = transactionRepository;
         _walletRepository = walletRepository;
         _authorizerService = authorizerService;
@@ -30,53 +35,100 @@ public class TransactionService {
 
     @Transactional
     public Transaction create(Transaction transaction) {
-        // valida transação
+        // validate transaction
         validarTransacao(transaction);
 
-        // cria transação
-        _transactionRepository.save(transaction);
-
-        // debitar carteira pagador
-        var walletPayer = _walletRepository.findById(transaction.payerId()).get();
+        // debit payer wallet
+        var walletPayer = _walletRepository.findById(transaction.payerId())
+            .orElseThrow(() -> new InvalidTransactionException(
+                "Não foi possível concluir a transação: a carteira do pagador não existe."
+            ));
         _walletRepository.save(walletPayer.debit(transaction.value()));
 
-        var walletPayee = _walletRepository.findById(transaction.payeeId()).get();
+        // credit payee wallet
+        var walletPayee = _walletRepository.findById(transaction.payeeId())
+            .orElseThrow(() -> new InvalidTransactionException(
+                "Não foi possível concluir a transação: a carteira do recebedor não existe."
+            ));
         _walletRepository.save(walletPayee.credit(transaction.value()));
 
-        // chamar serviços externos
+        // external authorization
         _authorizerService.authorize(transaction);
 
-        // notificação
+        // notification
         _notificationService.notify(transaction);
 
+        // return saved transaction (final state)
         return _transactionRepository.save(transaction);
     }
 
     public void validarTransacao(Transaction transaction) {
-        if(transaction == null) throw new InvalidTransactionException("Transação vazia");
+        if (transaction == null) {
+            throw new InvalidTransactionException(
+                "Não foi possível processar a transação: dados da transação não foram enviados."
+            );
+        }
 
         var payerId = transaction.payerId();
         var payeeId = transaction.payeeId();
 
-        if(payerId == null || payeeId == null)
-            throw new InvalidTransactionException("Transação inválida");
+        if (payerId == null || payeeId == null) {
+            throw new InvalidTransactionException(
+                "Não foi possível processar a transação: informe pagador e recebedor."
+            );
+        }
 
-        if(payerId.equals(payeeId))
-            throw new InvalidTransactionException("Pagador e Recebedor igual");
+        if (payerId.equals(payeeId)) {
+            throw new InvalidTransactionException(
+                "Transação inválida: o pagador e o recebedor não podem ser a mesma pessoa."
+            );
+        }
 
         var payerWallet = _walletRepository.findById(payerId)
-            .orElseThrow(() -> new InvalidTransactionException("Pagador não encontrado"));
+            .orElseThrow(() -> new InvalidTransactionException(
+                "Não foi possível concluir a transação: pagador não encontrado."
+            ));
 
         var payeeWallet = _walletRepository.findById(payeeId)
-            .orElseThrow(() -> new InvalidTransactionException("Recebedor não encontrado"));
+            .orElseThrow(() -> new InvalidTransactionException(
+                "Não foi possível concluir a transação: recebedor não encontrado."
+            ));
 
-        if(payerWallet == null || payeeWallet == null)
-            throw  new InvalidTransactionException("Transação vazia");
+        // defensive check (should never happen due to orElseThrow, but keeps message clear)
+        if (payerWallet == null || payeeWallet == null) {
+            throw new InvalidTransactionException(
+                "Não foi possível concluir a transação: não foi possível validar as carteiras."
+            );
+        }
 
-        if(payerWallet.typeEnum() == WalletType.LOJISTA)
-            throw  new InvalidTransactionException("Lojista não pode enviar dinheiro");
+        if (payerWallet.typeEnum() == WalletType.LOJISTA) {
+            throw new InvalidTransactionException(
+                "Transação não permitida: contas do tipo LOJISTA não podem enviar dinheiro."
+            );
+        }
 
-        if (payerWallet.balance().compareTo(transaction.value()) < 0)
-            throw  new InvalidTransactionException("Saldo Insuficiente");
+        if (transaction.value() == null) {
+            throw new InvalidTransactionException(
+                "Não foi possível processar a transação: informe um valor para transferência."
+            );
+        }
+
+        if (transaction.value().signum() <= 0) {
+            throw new InvalidTransactionException(
+                "Valor inválido: o valor da transferência precisa ser maior que zero."
+            );
+        }
+
+        if (payerWallet.balance() == null) {
+            throw new InvalidTransactionException(
+                "Não foi possível concluir a transação: saldo do pagador indisponível."
+            );
+        }
+
+        if (payerWallet.balance().compareTo(transaction.value()) < 0) {
+            throw new InvalidTransactionException(
+                "Saldo insuficiente: o pagador não possui saldo suficiente para concluir a transferência."
+            );
+        }
     }
 }
